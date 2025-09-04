@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Survey Form</title>
+    <!-- Use a CDN for Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        footballGreen: '#143D14',
+                        darkGreen: '#0E280E',
+                        turfGreen: '#2D6B2D',
+                        accentYellow: '#F3C539',
+                    }
+                },
+            },
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'sans-serif';
+            background-color: #0E280E;
+        }
+    </style>
+</head>
+<body class="bg-darkGreen p-6 min-h-screen flex items-center justify-center">
+
+    <div class="max-w-4xl w-full bg-gray-900 rounded-xl shadow-2xl p-8 space-y-8 border-4 border-turfGreen">
+        <h1 class="text-3xl font-bold text-center text-white">Baker Mayfield's Dozen</h1>
+        <p class="text-center text-gray-300">Please answer each question with a choice of one of the teams, and then rank your confidence for each question from 1 (lowest) to 16 (highest)</p>
+        <div id="auth-info" class="text-center text-gray-500 text-sm"></div>
+
+        <form id="surveyForm" class="space-y-6">
+            <!-- New single-line input fields -->
+            <div class="space-y-4">
+                <div>
+                    <label for="yourName" class="block text-sm font-medium text-gray-400">Your Name:</label>
+                    <input type="text" id="yourName" name="yourName" class="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-turfGreen focus:border-turfGreen sm:text-sm">
+                </div>
+                <div>
+                    <label for="yourTeamName" class="block text-sm font-medium text-gray-400">Your Team Name:</label>
+                    <input type="text" id="yourTeamName" name="yourTeamName" class="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-turfGreen focus:border-turfGreen sm:text-sm">
+                </div>
+            </div>
+
+            <!-- Questions will be dynamically generated here by JavaScript -->
+        </form>
+
+        <div class="flex justify-center mt-8 space-x-4">
+            <button id="submitBtn" type="button" class="px-8 py-4 bg-footballGreen text-white rounded-xl font-bold text-lg shadow-lg hover:bg-turfGreen transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-accentYellow focus:ring-opacity-50">
+                Submit Survey
+            </button>
+            <button id="viewResultsBtn" type="button" class="px-8 py-4 bg-gray-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-gray-700 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-accentYellow focus:ring-opacity-50">
+                View Results
+            </button>
+        </div>
+    </div>
+
+    <div id="resultsModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-white">Survey Results</h2>
+                <button id="closeModalBtn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div id="resultsContent" class="text-gray-300 space-y-4">
+                <!-- Results will be dynamically populated here -->
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId;
+        const authInfoDiv = document.getElementById('auth-info');
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+
+        // Sign in anonymously
+        const authenticateUser = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication error:", error);
+                authInfoDiv.textContent = 'Authentication failed. Please check the console for details.';
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                authInfoDiv.textContent = `Authenticated as User ID: ${userId}`;
+                console.log("User authenticated:", userId);
+            } else {
+                console.log("User is signed out.");
+                authInfoDiv.textContent = 'User not authenticated.';
+            }
+        });
+
+        // Array of 16 questions with specific team choices
+        const surveyData = [
+            { text: "Cowboys at Eagles (Thurs. 7:20 PM)", choices: ["Cowboys", "Eagles"] },
+            { text: "Chiefs at Chargers (Fri. 7:00 PM)", choices: ["Chiefs", "Chargers"] },
+            { text: "Buccaneers at Falcons (Sun. 12:00 PM)", choices: ["Buccaneers", "Falcons"] },
+            { text: "Bengals at Browns (Sun. 12:00 PM)", choices: ["Bengals", "Browns"] },
+            { text: "Dolphins at Colts (Sun. 12:00 PM)", choices: ["Dolphins", "Colts"] },
+            { text: "Panthers at Jaguars (Sun. 12:00 PM)", choices: ["Panthers", "Jaguars"] },
+            { text: "Raiders at Patriots (Sun. 12:00 PM)", choices: ["Raiders", "Patriots"] },
+            { text: "Cardinals at Saints (Sun. 12:00 PM)", choices: ["Cardinals", "Saints"] },
+            { text: "Steelers at Jets (Sun. 12:00 PM)", choices: ["Steelers", "Jets"] },
+            { text: "Giants at Commanders (Sun. 12:00 PM)", choices: ["Giants", "Commanders"] },
+            { text: "Titans at Broncos (Sun. 3:05 PM)", choices: ["Titans", "Broncos"] },
+            { text: "49ers at Seahawks (Sun. 3:05 PM)", choices: ["49ers", "Seahawks"] },
+            { text: "Lions at Packers (Sun. 3:25 PM)", choices: ["Lions", "Packers"] },
+            { text: "Texans at Rams (Sun. 3:25 PM)", choices: ["Texans", "Rams"] },
+            { text: "Ravens at Bills (Sun. 7:20 PM)", choices: ["Ravens", "Bills"] },
+            { text: "Vikings at Bears (Mon. 7:15 PM)", choices: ["Vikings", "Bears"] }
+        ];
+
+        const form = document.getElementById('surveyForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const viewResultsBtn = document.getElementById('viewResultsBtn');
+        const resultsModal = document.getElementById('resultsModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const resultsContent = document.getElementById('resultsContent');
+        const allRanks = new Set(Array.from({ length: 16 }, (_, i) => i + 1));
+        const usedRanks = new Map(); // Map to store current rank selections: { questionId: rank }
+
+        // Function to show a temporary notification message
+        const showNotification = (message) => {
+            const existingNotification = document.getElementById('notificationBox');
+            if (existingNotification) {
+                clearTimeout(existingNotification.timer);
+                existingNotification.remove();
+            }
+
+            const messageBox = document.createElement('div');
+            messageBox.id = 'notificationBox';
+            messageBox.classList.add('fixed', 'top-1/2', 'left-1/2', '-translate-x-1/2', '-translate-y-1/2', 'p-6', 'bg-accentYellow', 'text-black', 'rounded-lg', 'shadow-xl', 'z-50', 'text-center', 'font-semibold', 'transition-all', 'duration-300', 'transform', 'scale-100', 'opacity-100');
+            
+            const messageText = document.createElement('p');
+            messageText.textContent = message;
+            messageBox.appendChild(messageText);
+            document.body.appendChild(messageBox);
+            
+            messageBox.timer = setTimeout(() => {
+                messageBox.classList.add('opacity-0', 'scale-90');
+                setTimeout(() => messageBox.remove(), 300);
+            }, 3000);
+        };
+
+        // Function to create and append a question row to the form
+        const createQuestionElement = (questionData, index) => {
+            const questionId = `q${index + 1}`;
+            const questionContainer = document.createElement('div');
+            questionContainer.id = questionId;
+            questionContainer.classList.add('bg-gray-800', 'p-6', 'rounded-lg', 'border', 'border-gray-700', 'flex', 'flex-col', 'md:flex-row', 'items-center', 'justify-between', 'space-y-4', 'md:space-y-0', 'md:space-x-6', 'transition-shadow', 'duration-300', 'hover:shadow-lg');
+
+            // Question text
+            const questionTextElement = document.createElement('div');
+            questionTextElement.classList.add('flex-1', 'text-white', 'font-medium');
+            questionTextElement.textContent = questionData.text;
+            questionContainer.appendChild(questionTextElement);
+
+            // Team choice
+            const choiceContainer = document.createElement('div');
+            choiceContainer.classList.add('flex', 'items-center', 'space-x-4');
+            questionData.choices.forEach(choice => {
+                const label = document.createElement('label');
+                label.classList.add('flex', 'items-center', 'cursor-pointer');
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.name = `choice_${questionId}`;
+                input.value = choice;
+                input.classList.add('form-radio', 'h-5', 'w-5', 'text-turfGreen', 'transition-all', 'duration-200', 'border-gray-500', 'focus:ring-turfGreen');
+                label.appendChild(input);
+                label.innerHTML += `<span class="ml-2 text-gray-300">${choice}</span>`;
+                choiceContainer.appendChild(label);
+
+                input.addEventListener('change', () => updateRowDisplay(questionId));
+            });
+            questionContainer.appendChild(choiceContainer);
+
+            // Ranking text input with datalist
+            const rankContainer = document.createElement('div');
+            rankContainer.classList.add('flex', 'items-center', 'space-x-2');
+            
+            const choiceDisplay = document.createElement('span');
+            choiceDisplay.id = `choiceDisplay_${questionId}`;
+            choiceDisplay.classList.add('text-sm', 'text-gray-500', 'italic');
+            choiceDisplay.textContent = 'Select a team';
+            rankContainer.appendChild(choiceDisplay);
+            
+            // Single input field with datalist
+            const rankInput = document.createElement('input');
+            rankInput.type = 'number';
+            rankInput.id = `rankInput_${questionId}`;
+            rankInput.placeholder = 'Rank';
+            rankInput.min = 1;
+            rankInput.max = 16;
+            rankInput.setAttribute('list', 'rankOptions');
+            rankInput.classList.add('block', 'w-24', 'px-3', 'py-2', 'bg-gray-700', 'text-gray-300', 'border', 'border-gray-600', 'rounded-md', 'shadow-sm', 'focus:outline-none', 'focus:ring-turfGreen', 'focus:border-turfGreen', 'sm:text-sm');
+            rankContainer.appendChild(rankInput);
+
+            // Datalist to hold dynamic rank options
+            const rankDatalist = document.createElement('datalist');
+            rankDatalist.id = 'rankOptions';
+            rankContainer.appendChild(rankDatalist);
+
+            questionContainer.appendChild(rankContainer);
+            form.appendChild(questionContainer);
+
+            // Event listener for rank input changes
+            rankInput.addEventListener('change', (e) => handleRankChange(e.target.value, questionId));
+        };
+
+        // Populate the form with questions
+        surveyData.forEach((q, i) => createQuestionElement(q, i));
+        
+        // New function to update the display for a single row
+        const updateRowDisplay = (questionId) => {
+            const choiceInput = document.querySelector(`input[name="choice_${questionId}"]:checked`);
+            const choiceDisplay = document.getElementById(`choiceDisplay_${questionId}`);
+
+            const choice = choiceInput ? choiceInput.value : '';
+            const rank = usedRanks.get(questionId) || '';
+
+            let displayText = 'Select a team';
+            if (choice) {
+                displayText = `Your choice: ${choice}`;
+            }
+            if (rank && rank !== '') {
+                displayText += ` (Rank: ${rank})`;
+            }
+
+            choiceDisplay.textContent = displayText;
+        };
+
+        const updateRankOptions = () => {
+            const rankDatalist = document.getElementById('rankOptions');
+            rankDatalist.innerHTML = ''; // Clear existing options
+            
+            const usedRankValues = new Set([...usedRanks.values()].map(rank => parseInt(rank)));
+            const availableRanks = new Set([...allRanks].filter(rank => !usedRankValues.has(rank)));
+
+            availableRanks.forEach(rank => {
+                const option = document.createElement('option');
+                option.value = rank;
+                rankDatalist.appendChild(option);
+            });
+        };
+
+        const handleRankChange = (newRank, questionId) => {
+            const oldRank = usedRanks.get(questionId);
+            const parsedNewRank = newRank !== '' ? parseInt(newRank) : null;
+
+            // Remove old rank from usedRanks to make it available again
+            if (oldRank) {
+                usedRanks.delete(questionId);
+            }
+
+            // Validation for out of range
+            if (parsedNewRank !== null && (parsedNewRank < 1 || parsedNewRank > 16)) {
+                showNotification("Invalid value... Please enter a number from 1 to 16.");
+                document.getElementById(`rankInput_${questionId}`).value = '';
+                updateRankOptions();
+                updateRowDisplay(questionId);
+                return;
+            }
+
+            // Validation for already used by a DIFFERENT question
+            const isRankUsedByAnotherQuestion = [...usedRanks.entries()].some(([qId, rank]) => qId !== questionId && parseInt(rank) === parsedNewRank);
+            if (parsedNewRank !== null && isRankUsedByAnotherQuestion) {
+                showNotification(`That rank is already used... ${parsedNewRank}-yard penalty!`);
+                document.getElementById(`rankInput_${questionId}`).value = '';
+                updateRankOptions();
+                updateRowDisplay(questionId);
+                return;
+            }
+
+            if (parsedNewRank !== null) {
+                usedRanks.set(questionId, newRank);
+            }
+            
+            updateRankOptions();
+            updateRowDisplay(questionId);
+        };
+        
+        // Initial population of rank options
+        updateRankOptions();
+        
+        // Add event listener for form submission
+        submitBtn.addEventListener('click', async () => {
+            // Ensure authentication is complete
+            if (!userId) {
+                showNotification("Please wait, authenticating user...");
+                await authenticateUser();
+                if (!userId) {
+                    showNotification("Authentication failed. Cannot submit.");
+                    return;
+                }
+            }
+
+            const formData = {
+                yourName: document.getElementById('yourName').value,
+                yourTeamName: document.getElementById('yourTeamName').value
+            };
+            let isComplete = true;
+            let rankingsComplete = new Set();
+            surveyData.forEach((q, i) => {
+                const questionId = `q${i + 1}`;
+                const choiceInput = document.querySelector(`input[name="choice_${questionId}"]:checked`);
+                const rank = usedRanks.get(questionId);
+
+                if (!choiceInput || !rank) {
+                    isComplete = false;
+                }
+                
+                if (rank) {
+                    rankingsComplete.add(parseInt(rank));
+                }
+
+                formData[questionId] = {
+                    question: q.text,
+                    choice: choiceInput ? choiceInput.value : null,
+                    rank: rank
+                };
+            });
+
+            const allRanksUsed = rankingsComplete.size === allRanks.size;
+
+            if (isComplete && allRanksUsed) {
+                try {
+                    // Firestore collection path for public data
+                    const surveyRef = collection(db, `/artifacts/${appId}/public/data/survey-responses`);
+                    await addDoc(surveyRef, {
+                        ...formData,
+                        submittedAt: new Date(),
+                        userId: userId
+                    });
+                    
+                    showNotification('Survey submitted successfully!');
+                    console.log('Survey submitted to Firestore!', formData);
+                } catch (e) {
+                    console.error("Error adding document: ", e);
+                    showNotification('Error submitting survey. Check console.');
+                }
+            } else {
+                showNotification('Please complete all questions and rankings.');
+            }
+        });
+        
+        // Add event listeners for the results modal
+        viewResultsBtn.addEventListener('click', async () => {
+             // Ensure authentication is complete
+            if (!userId) {
+                showNotification("Please wait, authenticating user...");
+                await authenticateUser();
+                if (!userId) {
+                    showNotification("Authentication failed. Cannot retrieve data.");
+                    return;
+                }
+            }
+            resultsContent.innerHTML = '<p class="text-white text-center">Loading results...</p>';
+            resultsModal.classList.remove('hidden');
+
+            try {
+                const surveyRef = collection(db, `/artifacts/${appId}/public/data/survey-responses`);
+                const querySnapshot = await getDocs(surveyRef);
+                const results = [];
+                querySnapshot.forEach((doc) => {
+                    results.push(doc.data());
+                });
+
+                if (results.length > 0) {
+                    resultsContent.innerHTML = ''; // Clear loading message
+                    results.forEach(result => {
+                        const resultCard = document.createElement('div');
+                        resultCard.classList.add('bg-gray-700', 'p-4', 'rounded-lg', 'border', 'border-gray-600', 'mb-4');
+                        resultCard.innerHTML = `
+                            <p class="font-bold text-white mb-2">Team: ${result.yourTeamName} | Submitter: ${result.yourName}</p>
+                            <ul class="list-disc list-inside space-y-1 text-gray-300">
+                                ${Object.keys(result).filter(key => key.startsWith('q')).map(key => `
+                                    <li>${result[key].question}: ${result[key].choice} (Rank: ${result[key].rank})</li>
+                                `).join('')}
+                            </ul>
+                            <p class="text-xs text-gray-500 mt-2">Submitted on: ${new Date(result.submittedAt.seconds * 1000).toLocaleString()}</p>
+                        `;
+                        resultsContent.appendChild(resultCard);
+                    });
+                } else {
+                    resultsContent.innerHTML = '<p class="text-white text-center">No results found yet.</p>';
+                }
+            } catch (e) {
+                console.error("Error fetching documents: ", e);
+                resultsContent.innerHTML = '<p class="text-red-400 text-center">Error fetching results.</p>';
+            }
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            resultsModal.classList.add('hidden');
+        });
+
+        // Initialize user authentication on load
+        window.onload = authenticateUser;
+    </script>
+</body>
+</html>
