@@ -81,17 +81,86 @@
         import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = 'baker-s-dozen-cc77f'; // Hardcoded for your Firebase project
+        
+        // PASTE YOUR FIREBASE CONFIGURATION OBJECT HERE
+        // You can find this in your Firebase project settings under 'Your apps'.
+      const firebaseConfig = {
 
+    apiKey: "AIzaSyC3SZpLm4zSGlL61NB3Vb-yWFclI3lM-Eo",
+
+    authDomain: "baker-s-dozen-cc77f.firebaseapp.com",
+
+    projectId: "baker-s-dozen-cc77f",
+
+    storageBucket: "baker-s-dozen-cc77f.firebasestorage.app",
+
+    messagingSenderId: "18369429855",
+
+    appId: "1:18369429855:web:d45c48b6b361a3425036ea"
+
+        };
+        
+        // This is a special auth token for the dev environment, not for your live app
+        const initialAuthToken = null; 
+        
         let db, auth, userId;
         const authInfoDiv = document.getElementById('auth-info');
+        
+        const showNotification = (message) => {
+            const existingNotification = document.getElementById('notificationBox');
+            if (existingNotification) {
+                clearTimeout(existingNotification.timer);
+                existingNotification.remove();
+            }
+
+            const messageBox = document.createElement('div');
+            messageBox.id = 'notificationBox';
+            messageBox.classList.add('fixed', 'top-1/2', 'left-1/2', '-translate-x-1/2', '-translate-y-1/2', 'p-6', 'bg-accentYellow', 'text-black', 'rounded-lg', 'shadow-xl', 'z-50', 'text-center', 'font-semibold', 'transition-all', 'duration-300', 'transform', 'scale-100', 'opacity-100');
+            
+            const messageText = document.createElement('p');
+            messageText.textContent = message;
+            messageBox.appendChild(messageText);
+            document.body.appendChild(messageBox);
+            
+            messageBox.timer = setTimeout(() => {
+                messageBox.classList.add('opacity-0', 'scale-90');
+                setTimeout(() => messageBox.remove(), 300);
+            }, 3000);
+        };
 
         // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
+        const initializeFirebase = async () => {
+            if (firebaseConfig.projectId === "YOUR_PROJECT_ID") {
+                showNotification("Please update your Firebase credentials in the code to make this app work.");
+                return;
+            }
+            
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // This is the crucial fix. The listener is set up after the auth object is created.
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        authInfoDiv.textContent = `Authenticated as User ID: ${userId}`;
+                        console.log("User authenticated:", userId);
+                    } else {
+                        console.log("User is signed out.");
+                        authInfoDiv.textContent = 'User not authenticated.';
+                    }
+                });
+                
+                // Then, we immediately try to sign in the user
+                authenticateUser();
+                
+            } catch (error) {
+                console.error("Firebase initialization error:", error);
+                showNotification("Firebase initialization failed. Check your credentials.");
+            }
+        };
 
         // Sign in anonymously
         const authenticateUser = async () => {
@@ -107,18 +176,6 @@
             }
         };
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                userId = user.uid;
-                authInfoDiv.textContent = `Authenticated as User ID: ${userId}`;
-                console.log("User authenticated:", userId);
-            } else {
-                console.log("User is signed out.");
-                authInfoDiv.textContent = 'User not authenticated.';
-            }
-        });
-
-        // Array of 16 questions with specific team choices
         const surveyData = [
             { text: "Cowboys at Eagles (Thurs. 7:20 PM)", choices: ["Cowboys", "Eagles"] },
             { text: "Chiefs at Chargers (Fri. 7:00 PM)", choices: ["Chiefs", "Chargers"] },
@@ -147,43 +204,17 @@
         const allRanks = new Set(Array.from({ length: 16 }, (_, i) => i + 1));
         const usedRanks = new Map(); // Map to store current rank selections: { questionId: rank }
 
-        // Function to show a temporary notification message
-        const showNotification = (message) => {
-            const existingNotification = document.getElementById('notificationBox');
-            if (existingNotification) {
-                clearTimeout(existingNotification.timer);
-                existingNotification.remove();
-            }
-
-            const messageBox = document.createElement('div');
-            messageBox.id = 'notificationBox';
-            messageBox.classList.add('fixed', 'top-1/2', 'left-1/2', '-translate-x-1/2', '-translate-y-1/2', 'p-6', 'bg-accentYellow', 'text-black', 'rounded-lg', 'shadow-xl', 'z-50', 'text-center', 'font-semibold', 'transition-all', 'duration-300', 'transform', 'scale-100', 'opacity-100');
-            
-            const messageText = document.createElement('p');
-            messageText.textContent = message;
-            messageBox.appendChild(messageText);
-            document.body.appendChild(messageBox);
-            
-            messageBox.timer = setTimeout(() => {
-                messageBox.classList.add('opacity-0', 'scale-90');
-                setTimeout(() => messageBox.remove(), 300);
-            }, 3000);
-        };
-
-        // Function to create and append a question row to the form
         const createQuestionElement = (questionData, index) => {
             const questionId = `q${index + 1}`;
             const questionContainer = document.createElement('div');
             questionContainer.id = questionId;
             questionContainer.classList.add('bg-gray-800', 'p-6', 'rounded-lg', 'border', 'border-gray-700', 'flex', 'flex-col', 'md:flex-row', 'items-center', 'justify-between', 'space-y-4', 'md:space-y-0', 'md:space-x-6', 'transition-shadow', 'duration-300', 'hover:shadow-lg');
 
-            // Question text
             const questionTextElement = document.createElement('div');
             questionTextElement.classList.add('flex-1', 'text-white', 'font-medium');
             questionTextElement.textContent = questionData.text;
             questionContainer.appendChild(questionTextElement);
 
-            // Team choice
             const choiceContainer = document.createElement('div');
             choiceContainer.classList.add('flex', 'items-center', 'space-x-4');
             questionData.choices.forEach(choice => {
@@ -202,7 +233,6 @@
             });
             questionContainer.appendChild(choiceContainer);
 
-            // Ranking text input with datalist
             const rankContainer = document.createElement('div');
             rankContainer.classList.add('flex', 'items-center', 'space-x-2');
             
@@ -212,7 +242,6 @@
             choiceDisplay.textContent = 'Select a team';
             rankContainer.appendChild(choiceDisplay);
             
-            // Single input field with datalist
             const rankInput = document.createElement('input');
             rankInput.type = 'number';
             rankInput.id = `rankInput_${questionId}`;
@@ -223,7 +252,6 @@
             rankInput.classList.add('block', 'w-24', 'px-3', 'py-2', 'bg-gray-700', 'text-gray-300', 'border', 'border-gray-600', 'rounded-md', 'shadow-sm', 'focus:outline-none', 'focus:ring-turfGreen', 'focus:border-turfGreen', 'sm:text-sm');
             rankContainer.appendChild(rankInput);
 
-            // Datalist to hold dynamic rank options
             const rankDatalist = document.createElement('datalist');
             rankDatalist.id = 'rankOptions';
             rankContainer.appendChild(rankDatalist);
@@ -231,14 +259,12 @@
             questionContainer.appendChild(rankContainer);
             form.appendChild(questionContainer);
 
-            // Event listener for rank input changes
-            rankInput.addEventListener('change', (e) => handleRankChange(e.target.value, questionId));
+            // CHANGED: Use the 'input' event for more immediate feedback.
+            rankInput.addEventListener('input', (e) => handleRankChange(e.target.value, questionId));
         };
 
-        // Populate the form with questions
         surveyData.forEach((q, i) => createQuestionElement(q, i));
         
-        // New function to update the display for a single row
         const updateRowDisplay = (questionId) => {
             const choiceInput = document.querySelector(`input[name="choice_${questionId}"]:checked`);
             const choiceDisplay = document.getElementById(`choiceDisplay_${questionId}`);
@@ -259,7 +285,7 @@
 
         const updateRankOptions = () => {
             const rankDatalist = document.getElementById('rankOptions');
-            rankDatalist.innerHTML = ''; // Clear existing options
+            rankDatalist.innerHTML = '';
             
             const usedRankValues = new Set([...usedRanks.values()].map(rank => parseInt(rank)));
             const availableRanks = new Set([...allRanks].filter(rank => !usedRankValues.has(rank)));
@@ -275,12 +301,10 @@
             const oldRank = usedRanks.get(questionId);
             const parsedNewRank = newRank !== '' ? parseInt(newRank) : null;
 
-            // Remove old rank from usedRanks to make it available again
             if (oldRank) {
                 usedRanks.delete(questionId);
             }
 
-            // Validation for out of range
             if (parsedNewRank !== null && (parsedNewRank < 1 || parsedNewRank > 16)) {
                 showNotification("Invalid value... Please enter a number from 1 to 16.");
                 document.getElementById(`rankInput_${questionId}`).value = '';
@@ -289,7 +313,6 @@
                 return;
             }
 
-            // Validation for already used by a DIFFERENT question
             const isRankUsedByAnotherQuestion = [...usedRanks.entries()].some(([qId, rank]) => qId !== questionId && parseInt(rank) === parsedNewRank);
             if (parsedNewRank !== null && isRankUsedByAnotherQuestion) {
                 showNotification(`That rank is already used... ${parsedNewRank}-yard penalty!`);
@@ -307,12 +330,9 @@
             updateRowDisplay(questionId);
         };
         
-        // Initial population of rank options
         updateRankOptions();
         
-        // Add event listener for form submission
         submitBtn.addEventListener('click', async () => {
-            // Ensure authentication is complete
             if (!userId) {
                 showNotification("Please wait, authenticating user...");
                 await authenticateUser();
@@ -352,7 +372,6 @@
 
             if (isComplete && allRanksUsed) {
                 try {
-                    // Firestore collection path for public data
                     const surveyRef = collection(db, `/artifacts/${appId}/public/data/survey-responses`);
                     await addDoc(surveyRef, {
                         ...formData,
@@ -371,10 +390,8 @@
             }
         });
         
-        // Add event listeners for the results modal
         viewResultsBtn.addEventListener('click', async () => {
-             // Ensure authentication is complete
-            if (!userId) {
+             if (!userId) {
                 showNotification("Please wait, authenticating user...");
                 await authenticateUser();
                 if (!userId) {
@@ -394,7 +411,7 @@
                 });
 
                 if (results.length > 0) {
-                    resultsContent.innerHTML = ''; // Clear loading message
+                    resultsContent.innerHTML = '';
                     results.forEach(result => {
                         const resultCard = document.createElement('div');
                         resultCard.classList.add('bg-gray-700', 'p-4', 'rounded-lg', 'border', 'border-gray-600', 'mb-4');
@@ -422,8 +439,8 @@
             resultsModal.classList.add('hidden');
         });
 
-        // Initialize user authentication on load
-        window.onload = authenticateUser;
+        // Initialize Firebase on load.
+        window.onload = initializeFirebase;
     </script>
 </body>
 </html>
